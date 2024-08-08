@@ -1,6 +1,6 @@
 import { gql, GraphQLClient } from "graphql-request";
 
-const endpoint = `https://programs.shyft.to/v0/graphql/?api_key=<YOUR_SHYFT_API_KEY>`;
+const endpoint = `https://programs.shyft.to/v0/graphql/?api_key=`;
 
 const graphQLClient = new GraphQLClient(endpoint, {
   method: `POST`,
@@ -54,29 +54,78 @@ function queryAll() {
   graphQLClient.request(query).then(console.log);
 }
 
-function queryAndFilter() {
-  // Get all ProposalsV2 where name is like Orca
-  const query = gql`
-    query GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw_ProposalV2(
-      $where: GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw_ProposalV2_bool_exp
-    ) {
-      GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw_ProposalV2(where: $where) {
-        name
-        pubkey
+async function queryAndFilter() {
+
+
+  let length = 50;
+  let c = 0;
+  let offset = 0;
+  let allResults: any[] = [];
+  let done = false;
+  // Fetch data from the API
+  while (length === 50 && !done) {
+    const response = await fetch(`https://frontend-api.pump.fun/coins?offset=${offset}&limit=50&sortBy=desc&orderBy=latest`);
+    await new Promise((r)=> setTimeout(r, 500))
+    const results = await response.json();
+    allResults = allResults.concat(results);
+  
+    length = results.length;
+    c += length;
+    offset += 50;
+    for (const r of results){
+      if (r.complete) {
+        console.log(r)
+        done = true;
       }
     }
-  `;
-
-  const variables = {
-    where: {
-      name: {
-        _regex: "orca",
+    console.log(length, offset, c);
+  }
+  
+  // Fetch data from GraphQL
+  let allGraphQLResults: any[] = [];
+  offset = 0;
+  while (true) {
+    const query = gql`
+      query Pump_BondingCurve($orderBy: [pump_BondingCurve_order_by!], $where: pump_BondingCurve_bool_exp, $limit: Int, $offset: Int) {
+        pump_BondingCurve(order_by: $orderBy, where: $where, limit: $limit, offset: $offset) {
+          complete,
+          pubkey,
+          realTokenReserves
+        }
+      }
+    `;
+  
+    const variables = {
+      limit: 1000,
+      offset,
+      where: {
+        complete: {
+          _eq: false,
+        },
       },
-    },
-  };
-
-  // @ts-ignore
-  graphQLClient.request(query, variables).then(console.log);
+      orderBy: [{ realTokenReserves: 'asc' }],
+    };
+  
+    // @ts-ignore
+    const results = (await graphQLClient.request(query, variables)).pump_BondingCurve;
+    allGraphQLResults = allGraphQLResults.concat(results);
+    
+  // Compare the data from API and GraphQL
+  for (const apiResult of allResults) {
+    const graphQLResult = allGraphQLResults.filter((item) => item.pubkey === apiResult.bonding_curve);
+    if (graphQLResult) {
+      console.log('Matching data:');
+      console.log('API result:', apiResult);
+      console.log('GraphQL result:', graphQLResult);
+    } 
+  }
+    if (results.length < 1000) {
+      break;
+    }
+  
+    offset += 1000;
+  }
+  
 }
 
 function sortAndOrder() {
